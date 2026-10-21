@@ -21,7 +21,7 @@ Ein [TizenBrew](https://github.com/reisxd/TizenBrew)-Modul, das [Immich](https:/
 | Pfeiltasten | Auswahl bewegen | ◀ ▶ blättern, ▲ Infos anheften, ▼ Infos ausblenden |
 | OK | Öffnen | Diashow starten/pausieren, Video Play/Pause |
 | Play/Pause | Diashow ab der Auswahl | wie OK |
-| Zurück | eine Ebene zurück | zurück zum Raster |
+| Zurück | eine Ebene zurück, von der Startseite ins TizenBrew-Menü | zurück zum Raster |
 
 In den **Einstellungen** (Kachel auf der Startseite) lassen sich Tempo, Reihenfolge, Zoom-Effekt, Uhr und Videos in der Diashow einstellen, außerdem die Server-Adresse und die Abmeldung.
 
@@ -29,7 +29,7 @@ In den **Einstellungen** (Kachel auf der Startseite) lassen sich Tempo, Reihenfo
 
 - **Schärfere Fotos auf 4K-Bildschirmen:** Immich zeigt die Vorschau-Version eines Fotos (Standard: 1440 px). In Immich unter *Administration → Einstellungen → Bildeinstellungen → Vorschau* lässt sich die Auflösung erhöhen, z. B. auf 2160. Danach den Job „Miniaturansichten erzeugen“ für alle Fotos laufen lassen.
 - **Bilderrahmen-Betrieb:** Damit der Bildschirm während der Diashow nicht in den Bildschirmschoner oder in „Auto aus“ geht, die Energiespar-Einstellungen am Gerät anpassen.
-- **Server nicht erreichbar:** Zurück drücken, dann landest du wieder bei der Adresseingabe.
+- **Server nicht erreichbar (z. B. NAS aus):** Immich TV zeigt einen Hinweis. Mit OK prüfst du die Adresse oder verbindest neu, mit Zurück geht es ins TizenBrew-Menü.
 - Falls du in Immich eine eigene Helmet/CSP-Konfiguration (`IMMICH_HELMET_FILE`) nutzt, muss sie Inline-Styles erlauben.
 
 ## So funktioniert's
@@ -43,4 +43,10 @@ npm run check                    # Syntax prüfen
 node test/mock-server.js 2399    # Fake-Immich unter http://localhost:2399
 ```
 
-Die Testseiten spielen Tasten aus der URL ab, z. B. `http://localhost:2399/?keys=down,enter,wait1000,play`. Mit `MOCK_AUTH=0` simuliert der Server den abgemeldeten Zustand. Updates kommen über jsDelivr automatisch auf den Fernseher. Dort gilt ein Cache von bis zu 12 Stunden, den `https://purge.jsdelivr.net/gh/Uruser42/immich-tizenbrew/immich-tv.js` sofort leert.
+Die Testseiten spielen Tasten aus der URL ab, z. B. `http://localhost:2399/?keys=down,enter,wait1000,play`. Mit `MOCK_AUTH=0` simuliert der Server den abgemeldeten Zustand, mit `MOCK_DOWN=1` einen Proxy, hinter dem das NAS aus ist.
+
+`test/tizenbrew-sim.js` testet die Abläufe von Anfang bis Ende in headless Chromium. Das Skript wird dabei wie bei TizenBrew über das DevTools-Protokoll in jede Seite eingespielt, auch in Fehlerseiten. Es braucht die Mock-Server auf 2399 und 2401 (`MOCK_DOWN=1`):
+
+```bash
+docker run --rm --network host -v "$PWD":/usr/src/app/it zenika/alpine-chrome:with-puppeteer node it/test/tizenbrew-sim.js
+``` Updates kommen über jsDelivr automatisch auf den Fernseher. Dort gilt ein Cache von bis zu 12 Stunden, den `https://purge.jsdelivr.net/gh/Uruser42/immich-tizenbrew/immich-tv.js` sofort leert.

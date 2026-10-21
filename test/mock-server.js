@@ -1,11 +1,14 @@
 // Fake Immich server to try the module in a desktop browser.
 //
-//   node test/mock-server.js [port]          (MOCK_AUTH=0 simulates "logged out")
+//   node test/mock-server.js [port]
+//   MOCK_AUTH=0 simulates "logged out", MOCK_DOWN=1 a proxy whose NAS is off (502).
 //
 // /start.html is the launcher, every other page is the "Immich web app".
-// Both get immich-tv.js injected like TizenBrew would. Remote keys can be
-// replayed with ?keys=down,right,enter (see driver.js), and ?hold=ms delays
-// the page's load event so headless screenshots catch the final state.
+// Both get immich-tv.js injected like TizenBrew would. /tizenbrew.html stands
+// in for TizenBrew's menu: it forwards to ?to= (default /start.html) so the
+// Back key can be tested. Remote keys can be replayed with
+// ?keys=down,right,enter (see driver.js), and ?hold=ms delays the page's load
+// event so headless screenshots catch the final state.
 'use strict';
 
 const http = require('http');
@@ -14,6 +17,19 @@ const path = require('path');
 
 const PORT = Number(process.argv[2]) || 2283;
 const AUTH = process.env.MOCK_AUTH !== '0';
+const DOWN = process.env.MOCK_DOWN === '1';
+
+// Stand-in for TizenBrew's menu. On first load it forwards to ?to=, coming
+// back it says so. Its load event waits (hold.gif) so screenshots show the end state.
+const TIZENBREW = `<!doctype html><html><head><meta charset="utf-8"><title>TizenBrew (Mock)</title>
+<style>body{background:#1d4ed8;color:#fff;font:32px sans-serif;padding:60px}</style></head>
+<body><h1>TizenBrew-Menü (Attrappe)</h1><p id="state">Startet das Modul …</p><script>
+const nav = performance.getEntriesByType('navigation')[0];
+const back = nav && nav.type === 'back_forward';
+document.write('<img src="/hold.gif?ms=' + (back ? 300 : 20000) + '" style="display:none">');
+if (back) document.getElementById('state').textContent = 'Zurück im TizenBrew-Menü ✓';
+else setTimeout(() => { location.href = (new URLSearchParams(location.search).get('to') || '/start.html') + location.search; }, Number(new URLSearchParams(location.search).get('fwd')) || 300);
+</script></body></html>`;
 const MODULE = path.join(__dirname, '..', 'immich-tv.js');
 const DRIVER = path.join(__dirname, 'driver.js');
 
@@ -136,6 +152,11 @@ http.createServer((req, res) => {
   if (p === '/driver.js') return send(res, 200, 'text/javascript', fs.readFileSync(DRIVER));
   if (p === '/hold.gif') return setTimeout(() => send(res, 200, 'image/gif', GIF), Number(q.get('ms')) || 0);
   if (p === '/start.html') return send(res, 200, 'text/html', page('Immich TV', '<pre>(start.html wird von jsDelivr als Text ausgeliefert)</pre>', hold));
+  if (p === '/tizenbrew.html') return send(res, 200, 'text/html', TIZENBREW);
+  if (DOWN) {
+    const body = p.startsWith('/api/') ? '{"message":"Bad Gateway"}' : page('502 Bad Gateway', '<h1>502 Bad Gateway</h1><hr>nginx', hold);
+    return send(res, 502, p.startsWith('/api/') ? 'application/json' : 'text/html', body);
+  }
 
   if (p.startsWith('/api/')) {
     const route = p.slice(4);

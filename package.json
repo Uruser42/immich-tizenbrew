@@ -1,7 +1,7 @@
 {
   "name": "immich-tizenbrew",
   "appName": "Immich TV",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Immich auf dem Samsung-Fernseher: Alben, Zeitleiste, Favoriten und Diashow – komplett mit der Fernbedienung.",
   "packageType": "mods",
   "websiteURL": "https://cdn.jsdelivr.net/gh/Uruser42/immich-tizenbrew/start.html",

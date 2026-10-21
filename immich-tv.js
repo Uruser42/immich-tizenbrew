@@ -18,7 +18,7 @@
   if (window.top !== window || window.__immichTv) return;
   window.__immichTv = true;
 
-  const VERSION = '1.0.0';
+  const VERSION = '1.0.1';
   const LAUNCHER_URL = 'https://cdn.jsdelivr.net/gh/Uruser42/immich-tizenbrew/start.html';
   const SERVER_KEY = 'immichTv.server';
   const SETTINGS_KEY = 'immichTv.settings';
@@ -140,6 +140,36 @@
 
   function keyOf(e) {
     return KEY_CODES[e.keyCode] || KEY_NAMES[e.key] || null;
+  }
+
+  // The remote's Back key only; Backspace and Escape stay usable for typing.
+  const isTvBack = (e) => e.keyCode === 10009 || e.key === 'XF86Back';
+
+  // Leaves the module. TizenBrew's own page is the first entry of the
+  // session history, so go there; if the TV refuses, close the app instead.
+  let leaving = false;
+  function leaveModule(onStuck) {
+    if (leaving) return;
+    leaving = true;
+    let gone = false;
+    const markGone = () => { gone = true; };
+    window.addEventListener('pagehide', markGone);
+    window.addEventListener('beforeunload', markGone);
+    if (history.length > 1) history.go(1 - history.length);
+    setTimeout(() => {
+      if (gone) return;
+      leaving = false;
+      try {
+        if (window.tizen && window.tizen.application) {
+          window.tizen.application.getCurrentApplication().exit();
+          return;
+        }
+      } catch (e) {
+        // Tizen APIs aren't exposed to this page.
+      }
+      window.close();
+      if (onStuck) onStuck();
+    }, 1500);
   }
 
   // ----------------------------------------------------------- formatting
@@ -545,18 +575,6 @@ html.itv-active > body { display: none !important; }
     return true;
   }
 
-  function exitApp() {
-    try {
-      if (window.tizen && window.tizen.application) {
-        window.tizen.application.getCurrentApplication().exit();
-        return;
-      }
-    } catch (e) {
-      // Tizen APIs aren't exposed to this page.
-    }
-    toast('Zum Beenden die Home-Taste drücken');
-  }
-
   function tickClocks() {
     if (!ui.root) return;
     const now = new Date();
@@ -569,10 +587,10 @@ html.itv-active > body { display: none !important; }
   function handleKey(e) {
     const key = keyOf(e);
     if (!ui.root) {
-      // Before login: the TV's Back key returns to the launcher.
-      if (e.type === 'keydown' && e.keyCode === 10009) {
+      // Login page: the TV's Back key returns to TizenBrew.
+      if (e.type === 'keydown' && isTvBack(e)) {
         e.preventDefault();
-        history.back();
+        leaveModule();
       }
       return;
     }
@@ -583,7 +601,7 @@ html.itv-active > body { display: none !important; }
     if (e.type !== 'keydown') return;
     const top = topView();
     if (top && top.onKey(key)) return;
-    if (key === 'back' && !popView()) exitApp();
+    if (key === 'back' && !popView()) leaveModule(() => toast('Zum Beenden die Home-Taste drücken'));
   }
 
   // ------------------------------------------------------------ actions
@@ -685,7 +703,7 @@ html.itv-active > body { display: none !important; }
     const albumsGrid = h('div', { class: 'albums' }, h('div', { class: 'empty', text: 'Alben werden geladen …' }));
     scroller.appendChild(h('div', { class: 'section' }, [albumsTitle, albumsGrid]));
     el.appendChild(scroller);
-    el.appendChild(h('div', { class: 'hint', html: '<b>OK</b>Öffnen<b>Play</b>Diashow<b>Zurück</b>Beenden' }));
+    el.appendChild(h('div', { class: 'hint', html: '<b>OK</b>Öffnen<b>Play</b>Diashow<b>Zurück</b>TizenBrew' }));
 
     let albums = [];
     const sections = [{ els: actionEls, cols: 4 }, { els: [], cols: ALBUM_COLS }];
@@ -1341,12 +1359,16 @@ html.itv-active > body { display: none !important; }
   }
 
   function startClient() {
-    // Only take over pages that really belong to an Immich server.
+    // Only take over pages that really belong to an Immich server. A proxy
+    // answering 5xx (or no answer at all) means the server is down.
     return fetch('/api/server/ping', { credentials: 'same-origin' })
-      .then((res) => (res.ok ? res.json() : null))
-      .catch(() => null)
+      .then((res) => (res.ok ? res.json().catch(() => null) : { status: res.status }), () => ({ status: 0 }))
       .then((ping) => {
-        if (!ping || ping.res !== 'pong') return;
+        if (!ping || ping.res !== 'pong') {
+          const tizenBrewService = location.port === '8081' && /^(127\.0\.0\.1|localhost)$/.test(location.hostname);
+          if (ping && (ping.status === 0 || ping.status >= 500) && !tizenBrewService) showUnreachable();
+          return;
+        }
         injectStyles();
         window.addEventListener('keydown', handleKey, true);
         window.addEventListener('keyup', handleKey, true);
@@ -1379,11 +1401,19 @@ html.itv-active > body { display: none !important; }
       box.appendChild(h('div', { class: 'launch-text', text }));
     }
 
+    function leave() {
+      clearTimeout(countdown);
+      leaveModule(() => {
+        const text = box.querySelector('.launch-text');
+        if (text) text.textContent = 'Zum Beenden die Home-Taste drücken';
+      });
+    }
+
     function showCountdown() {
       mode = 'countdown';
       header('Verbinde mit ' + saved + ' …');
       box.appendChild(h('div', { class: 'launch-bar' }, h('div')));
-      box.appendChild(h('div', { class: 'launch-hint', text: 'OK drücken, um die Adresse zu ändern' }));
+      box.appendChild(h('div', { class: 'launch-hint', text: 'OK: Adresse ändern · Zurück: TizenBrew' }));
       countdown = setTimeout(() => { location.href = saved + '/'; }, 1600);
     }
 
@@ -1395,7 +1425,7 @@ html.itv-active > body { display: none !important; }
       button = h('div', { class: 'launch-button', text: 'Verbinden' });
       errorEl = h('div', { class: 'launch-error' });
       box.appendChild(input);
-      box.appendChild(h('div', { class: 'launch-hint', text: 'Zum Beispiel http://192.168.0.50:2283 · danach mit ▼ zu „Verbinden“' }));
+      box.appendChild(h('div', { class: 'launch-hint', text: 'Zum Beispiel http://192.168.0.50:2283 · danach mit ▼ zu „Verbinden“ · Zurück: TizenBrew' }));
       box.appendChild(errorEl);
       box.appendChild(button);
       input.focus();
@@ -1427,18 +1457,19 @@ html.itv-active > body { display: none !important; }
       if (mode === 'countdown') {
         if (key === 'enter' || key === 'back') e.preventDefault();
         if (key === 'enter') showForm();
-        else if (key === 'back') {
-          clearTimeout(countdown);
-          history.back();
-        }
+        else if (key === 'back') leave();
         return;
       }
-      // Typing, the on-screen keyboard and OK all stay with the input field.
+      // Typing, the on-screen keyboard and OK stay with the input field; only
+      // the remote's Back key (not Backspace) leaves from there.
       if (document.activeElement === input) {
         if (key === 'down') {
           e.preventDefault();
           input.blur();
           button.classList.add('is-focused');
+        } else if (isTvBack(e)) {
+          e.preventDefault();
+          leave();
         }
         return;
       }
@@ -1450,7 +1481,7 @@ html.itv-active > body { display: none !important; }
       } else if (key === 'enter') {
         connect();
       } else if (key === 'back') {
-        history.back();
+        leave();
       }
     }, true);
 
@@ -1465,27 +1496,31 @@ html.itv-active > body { display: none !important; }
     else showForm();
   }
 
-  // Browser error page, e.g. when the NAS is off.
-  function startErrorPage() {
+  // The server is off or unreachable: the browser's error page, or a proxy's.
+  function showUnreachable() {
     injectStyles();
     document.documentElement.classList.add('itv-active');
+    const text = h('div', { class: 'launch-text', text: 'Ist der Server an und im selben Netz?' });
     document.documentElement.appendChild(h('div', { id: 'itv', class: 'itv-launcher' }, h('div', { class: 'launch' }, [
       h('div', { class: 'launch-logo', html: ICONS.logo }),
       h('div', { class: 'launch-title', text: 'Immich ist nicht erreichbar' }),
-      h('div', { class: 'launch-text', text: 'Ist der Server an und im selben Netz? OK drücken, um die Adresse zu prüfen.' }),
+      text,
+      h('div', { class: 'launch-hint', style: 'margin-top: 2.4rem', text: 'OK: Adresse prüfen oder neu verbinden · Zurück: TizenBrew' }),
     ])));
     window.addEventListener('keydown', (e) => {
       const key = keyOf(e);
       if (key !== 'enter' && key !== 'back') return;
       e.preventDefault();
-      history.back();
+      e.stopImmediatePropagation();
+      if (key === 'enter') location.href = LAUNCHER_URL + '?setup';
+      else leaveModule(() => { text.textContent = 'Zum Beenden die Home-Taste drücken'; });
     }, true);
   }
 
   // ---------------------------------------------------------------- start
 
   if (location.href.indexOf('chrome-error:') === 0) {
-    onReady(startErrorPage);
+    onReady(showUnreachable);
   } else if (/^https?:$/.test(location.protocol)) {
     if (/\/start\.html$/.test(location.pathname)) onReady(startLauncher);
     else onReady(() => startClient().catch((err) => console.error('[Immich TV]', err)));

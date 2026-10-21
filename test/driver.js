@@ -1,5 +1,5 @@
 // Replays remote-control keys from the URL, e.g. ?keys=down,down,enter&step=400
-// Keys: left right up down enter back play, waitMS pauses.
+// Keys: left right up down enter back (Escape) tvback (remote's Back) play, waitMS pauses.
 // ?seed=http://host:port pre-fills the launcher's saved server address.
 (function () {
   'use strict';
@@ -7,7 +7,7 @@
   if (params.get('seed')) localStorage.setItem('immichTv.server', JSON.stringify(params.get('seed')));
   const keys = (params.get('keys') || '').split(',').filter(Boolean);
   const step = Number(params.get('step')) || 400;
-  const NAMES = { left: 'ArrowLeft', right: 'ArrowRight', up: 'ArrowUp', down: 'ArrowDown', enter: 'Enter', back: 'Escape', play: ' ' };
+  const NAMES = { left: 'ArrowLeft', right: 'ArrowRight', up: 'ArrowUp', down: 'ArrowDown', enter: 'Enter', back: 'Escape', tvback: 'XF86Back', play: ' ' };
 
   function press(name) {
     const key = NAMES[name] || name;
